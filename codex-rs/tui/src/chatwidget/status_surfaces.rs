@@ -33,6 +33,10 @@ pub(super) const TERMINAL_TITLE_SPINNER_INTERVAL: Duration = Duration::from_mill
 /// Time between action-required blink phases in the terminal title.
 const TERMINAL_TITLE_ACTION_REQUIRED_INTERVAL: Duration = Duration::from_secs(1);
 
+/// How often the configured `status_line_command` is re-run to refresh the
+/// `custom` status-line item.
+const STATUS_LINE_COMMAND_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+
 /// Prefix shown in the terminal title when the agent is blocked on user input.
 const TERMINAL_TITLE_ACTION_REQUIRED_PREFIX: &str = "[ ! ] Action Required";
 const TERMINAL_TITLE_ACTION_REQUIRED_PREFIX_HIDDEN: &str = "[ . ] Action Required";
@@ -171,6 +175,18 @@ impl ChatWidget {
             self.status_line_workspace_messages_disabled = false;
         } else {
             self.request_status_line_workspace_headline_if_due(Instant::now());
+        }
+
+        if !selections
+            .status_line_items
+            .contains(&StatusLineItem::Custom)
+        {
+            self.status_line_command_output = None;
+            self.status_line_command_pending_request_id = None;
+            self.status_line_command_last_requested_at = None;
+            self.status_line_command_last_snapshot = None;
+        } else {
+            self.request_status_line_command_if_due(Instant::now());
         }
     }
 
@@ -647,6 +663,101 @@ impl ChatWidget {
         true
     }
 
+    /// Configured `status_line_command` argv, or `None` when unset or empty.
+    pub(super) fn configured_status_line_command(&self) -> Option<Vec<String>> {
+        self.config
+            .tui_status_line_command
+            .as_ref()
+            .filter(|argv| !argv.is_empty())
+            .cloned()
+    }
+
+    fn request_status_line_command_if_due(&mut self, now: Instant) {
+        if self.status_line_command_pending_request_id.is_some() {
+            return;
+        }
+        let Some(command) = self.configured_status_line_command() else {
+            return;
+        };
+        if !self
+            .status_line_items_with_invalids()
+            .0
+            .contains(&StatusLineItem::Custom)
+        {
+            return;
+        }
+
+        // Re-run immediately when the session snapshot (cwd, branch, model)
+        // changes so a branch or directory switch is not stuck on the previous
+        // value; otherwise rate-limit to STATUS_LINE_COMMAND_REFRESH_INTERVAL.
+        let stdin_json = self.status_line_command_json_snapshot();
+        let snapshot_changed =
+            self.status_line_command_last_snapshot.as_deref() != Some(stdin_json.as_str());
+        let interval_elapsed = self
+            .status_line_command_last_requested_at
+            .is_none_or(|last_requested_at| {
+                now.saturating_duration_since(last_requested_at)
+                    >= STATUS_LINE_COMMAND_REFRESH_INTERVAL
+            });
+        if !snapshot_changed && !interval_elapsed {
+            return;
+        }
+
+        let request_id = self.next_status_line_command_request_id;
+        self.next_status_line_command_request_id =
+            self.next_status_line_command_request_id.wrapping_add(/*rhs*/ 1);
+        self.status_line_command_pending_request_id = Some(request_id);
+        self.status_line_command_last_requested_at = Some(now);
+        self.status_line_command_last_snapshot = Some(stdin_json.clone());
+        self.app_event_tx.send(AppEvent::RefreshStatusLineCommand {
+            request_id,
+            command,
+            stdin_json,
+        });
+    }
+
+    pub(super) fn refresh_status_line_if_command_due(&mut self) {
+        self.request_status_line_command_if_due(Instant::now());
+    }
+
+    /// JSON session snapshot written to the `status_line_command` stdin.
+    fn status_line_command_json_snapshot(&mut self) -> String {
+        serde_json::json!({
+            "cwd": self.status_line_cwd().display().to_string(),
+            "git_branch": self.status_line_branch.clone(),
+            "model": self.model_display_name().to_string(),
+        })
+        .to_string()
+    }
+
+    /// Applies the result of an async `status_line_command` run. Returns whether
+    /// the pending request matched (so the caller can schedule a redraw).
+    pub(crate) fn set_status_line_command_output(
+        &mut self,
+        request_id: u64,
+        result: Result<Option<String>, String>,
+    ) -> bool {
+        if self.status_line_command_pending_request_id != Some(request_id) {
+            return false;
+        }
+        self.status_line_command_pending_request_id = None;
+        match result {
+            Ok(output) => self.status_line_command_output = output,
+            // Fail open: keep the last good value, just record the failure.
+            Err(err) => tracing::debug!(error = %err, "status_line_command failed"),
+        }
+        if self
+            .status_line_items_with_invalids()
+            .0
+            .contains(&StatusLineItem::Custom)
+        {
+            self.frame_requester
+                .schedule_frame_in(STATUS_LINE_COMMAND_REFRESH_INTERVAL);
+        }
+        self.refresh_status_line();
+        true
+    }
+
     /// Resolves a display string for one configured status-line item.
     ///
     /// Returning `None` means "omit this item for now", not "configuration error". Callers rely on
@@ -749,6 +860,7 @@ impl ChatWidget {
             ),
             StatusLineItem::WorkspaceHeadline => self.status_line_workspace_headline.clone(),
             StatusLineItem::TaskProgress => self.terminal_title_task_progress(),
+            StatusLineItem::Custom => self.status_line_command_output.clone(),
         }
     }
 

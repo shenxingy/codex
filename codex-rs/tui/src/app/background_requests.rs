@@ -177,6 +177,21 @@ impl App {
         });
     }
 
+    /// Run the user-configured `status_line_command` off the event loop and route
+    /// its first stdout line back as [`AppEvent::StatusLineCommandUpdated`].
+    pub(super) fn refresh_status_line_command(
+        &mut self,
+        request_id: u64,
+        command: Vec<String>,
+        stdin_json: String,
+    ) {
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result = run_status_line_command(&command, &stdin_json).await;
+            app_event_tx.send(AppEvent::StatusLineCommandUpdated { request_id, result });
+        });
+    }
+
     pub(super) fn send_add_credits_nudge_email(
         &mut self,
         app_server: &AppServerSession,
@@ -1238,6 +1253,61 @@ pub(super) async fn fetch_feedback_upload(
         .wrap_err("feedback/upload failed in TUI")
 }
 
+const STATUS_LINE_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Run `command` (argv), writing `stdin_json` to its stdin, and return the first
+/// non-empty line of stdout. Bounded by [`STATUS_LINE_COMMAND_TIMEOUT`] with
+/// `kill_on_drop`, so a slow or hung command never blocks the TUI: on timeout,
+/// spawn failure, or non-zero exit it returns `Err` and the caller keeps the
+/// last good value (fail-open).
+pub(super) async fn run_status_line_command(
+    command: &[String],
+    stdin_json: &str,
+) -> Result<Option<String>, String> {
+    let Some((program, args)) = command.split_first() else {
+        return Err("status_line_command is empty".to_string());
+    };
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+
+    let stdin_json = stdin_json.to_string();
+    let run = async move {
+        let mut child = cmd
+            .spawn()
+            .map_err(|err| format!("failed to spawn status_line_command: {err}"))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            let _ = stdin.write_all(stdin_json.as_bytes()).await;
+            let _ = stdin.shutdown().await;
+        }
+        let output = child
+            .wait_with_output()
+            .await
+            .map_err(|err| format!("status_line_command failed: {err}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "status_line_command exited with {status}",
+                status = output.status
+            ));
+        }
+        let line = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .next()
+            .map(|line| line.trim_end().to_string())
+            .filter(|line| !line.is_empty());
+        Ok(line)
+    };
+
+    match tokio::time::timeout(STATUS_LINE_COMMAND_TIMEOUT, run).await {
+        Ok(result) => result,
+        Err(_) => Err("status_line_command timed out".to_string()),
+    }
+}
+
 /// Convert flat `McpServerStatus` responses into the per-server maps used by the
 /// in-process MCP subsystem (tools keyed as `mcp__{server}__{tool}`, plus
 /// per-server resource/template/auth maps). Test-only because the TUI
@@ -1286,6 +1356,61 @@ mod tests {
     use codex_protocol::mcp::Tool;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use pretty_assertions::assert_eq;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn status_line_command_returns_first_stdout_line() {
+        let cmd = vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            "printf 'first\\nsecond\\n'".to_string(),
+        ];
+        assert_eq!(
+            run_status_line_command(&cmd, "").await,
+            Ok(Some("first".to_string()))
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn status_line_command_passes_stdin_and_returns_first_line() {
+        // `cat` echoes the stdin snapshot back; only the first line is used.
+        let cmd = vec!["cat".to_string()];
+        assert_eq!(
+            run_status_line_command(&cmd, "hello\nworld").await,
+            Ok(Some("hello".to_string()))
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn status_line_command_empty_output_is_none() {
+        let cmd = vec!["true".to_string()];
+        assert_eq!(run_status_line_command(&cmd, "").await, Ok(None));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn status_line_command_nonzero_exit_is_error() {
+        let cmd = vec!["false".to_string()];
+        assert!(run_status_line_command(&cmd, "").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn status_line_command_empty_argv_is_error() {
+        let empty: Vec<String> = Vec::new();
+        assert!(run_status_line_command(&empty, "").await.is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn status_line_command_times_out() {
+        let cmd = vec!["sh".to_string(), "-c".to_string(), "sleep 30".to_string()];
+        assert_eq!(
+            run_status_line_command(&cmd, "").await,
+            Err("status_line_command timed out".to_string())
+        );
+    }
 
     fn test_absolute_path(path: &str) -> AbsolutePathBuf {
         AbsolutePathBuf::try_from(PathBuf::from(path)).expect("absolute test path")
