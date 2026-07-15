@@ -799,6 +799,13 @@ impl App {
             AppEvent::RefreshStatusLineWorkspaceHeadline { request_id } => {
                 self.refresh_status_line_workspace_headline(app_server, request_id);
             }
+            AppEvent::RefreshStatusLineCommand {
+                request_id,
+                command,
+                stdin_json,
+            } => {
+                self.refresh_status_line_command(request_id, command, stdin_json);
+            }
             AppEvent::OpenThreadGoalMenu { thread_id } => {
                 self.open_thread_goal_menu(app_server, thread_id).await;
             }
@@ -2175,6 +2182,14 @@ impl App {
                 if self
                     .chat_widget
                     .set_status_line_workspace_headline(request_id, result)
+                {
+                    tui.frame_requester().schedule_frame();
+                }
+            }
+            AppEvent::StatusLineCommandUpdated { request_id, result } => {
+                if self
+                    .chat_widget
+                    .set_status_line_command_output(request_id, result)
                 {
                     tui.frame_requester().schedule_frame();
                 }

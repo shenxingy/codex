@@ -728,6 +728,17 @@ pub struct Tui {
     #[serde(default = "default_true")]
     pub status_line_use_colors: bool,
 
+    /// External command (argv) whose stdout renders the `custom` status-line item.
+    ///
+    /// Codex runs the command on a timer, writes a JSON session snapshot to its
+    /// stdin, and renders the first line of stdout (ANSI-aware) wherever `custom`
+    /// appears in `status_line`. The command runs with a timeout and fails open:
+    /// on timeout, non-zero exit, or spawn error the previous value is kept.
+    /// This is the command-backed extension point requested in
+    /// <https://github.com/openai/codex/issues/17827>.
+    #[serde(default)]
+    pub status_line_command: Option<Vec<String>>,
+
     /// Ordered list of terminal title item identifiers.
     ///
     /// When set, the TUI renders the selected items into the terminal window/tab title.

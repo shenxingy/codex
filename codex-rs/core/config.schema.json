@@ -3267,6 +3267,14 @@
           },
           "type": "array"
         },
+        "status_line_command": {
+          "default": null,
+          "description": "External command (argv) whose stdout renders the `custom` status-line item.\n\nCodex runs the command on a timer, writes a JSON session snapshot to its stdin, and renders the first line of stdout (ANSI-aware) wherever `custom` appears in `status_line`. The command runs with a timeout and fails open: on timeout, non-zero exit, or spawn error the previous value is kept. This is the command-backed extension point requested in <https://github.com/openai/codex/issues/17827>.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "status_line_use_colors": {
           "default": true,
           "description": "Color status line items with colors derived from the active syntax theme. Defaults to `true`.",

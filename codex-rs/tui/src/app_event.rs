@@ -357,6 +357,15 @@ pub(crate) enum AppEvent {
         request_id: u64,
     },
 
+    /// Run the configured `status_line_command` for the `custom` status-line item.
+    /// The command argv and the JSON session snapshot for its stdin are captured
+    /// at request time so the spawned process needs no further chat-widget state.
+    RefreshStatusLineCommand {
+        request_id: u64,
+        command: Vec<String>,
+        stdin_json: String,
+    },
+
     /// Commit settled asynchronous usage output after active-output barriers clear.
     CommitPendingUsageOutput,
 
@@ -1013,6 +1022,13 @@ pub(crate) enum AppEvent {
     StatusLineWorkspaceHeadlineUpdated {
         request_id: u64,
         result: Result<crate::workspace_messages::WorkspaceHeadlineFetchResult, String>,
+    },
+    /// Result of a `status_line_command` run: the first stdout line, or `None`
+    /// when the command produced no output, or `Err` on timeout/failure (kept
+    /// out of the footer while preserving the last good value).
+    StatusLineCommandUpdated {
+        request_id: u64,
+        result: Result<Option<String>, String>,
     },
     /// Apply a user-confirmed status-line item ordering/selection.
     StatusLineSetup {
