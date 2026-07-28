@@ -74,7 +74,7 @@ WantedBy=timers.target
 """
 
 
-def usage_service_text(refresh_path: Path) -> str:
+def usage_service_text(refresh_path: Path, environment_path: str) -> str:
     return f"""[Unit]
 Description=Refresh cached Codex usage for the custom status line
 After=network-online.target
@@ -83,6 +83,7 @@ ConditionFileIsExecutable={refresh_path}
 
 [Service]
 Type=oneshot
+Environment=PATH={unit_quote(environment_path)}
 ExecStart={unit_quote(str(refresh_path))}
 """
 
@@ -110,7 +111,7 @@ def install_systemd_units(layout: Layout, environment_path: str) -> None:
     }
     refresh_path = layout.install_root / "refresh-usage"
     if refresh_path.is_file() and os.access(refresh_path, os.X_OK):
-        units[USAGE_SERVICE] = usage_service_text(refresh_path)
+        units[USAGE_SERVICE] = usage_service_text(refresh_path, environment_path)
         units[USAGE_TIMER] = usage_timer_text()
     for name, contents in units.items():
         path = unit_dir / name

@@ -140,6 +140,13 @@ def test_update_service_preserves_installer_path() -> None:
     assert "Nice=10" in text
 
 
+def test_usage_service_preserves_installer_path() -> None:
+    text = updater.usage_service_text(Path("/opt/refresh usage"), "/custom/bin")
+
+    assert 'Environment=PATH="/custom/bin"' in text
+    assert 'ExecStart="/opt/refresh usage"' in text
+
+
 def test_default_layout_respects_test_overrides(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
