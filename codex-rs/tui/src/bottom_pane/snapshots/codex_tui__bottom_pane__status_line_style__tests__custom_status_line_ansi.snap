@@ -1,0 +1,14 @@
+---
+source: tui/src/bottom_pane/status_line_style.rs
+expression: line
+---
+Line::from_iter([
+    Span::from("Clade").cyan(),
+    Span::from(" ").fg(Color::Reset).bg(Color::Reset).underline_color(Color::Reset).not_bold().not_dim().not_italic().not_underlined().not_slow_blink().not_rapid_blink().not_reversed().not_hidden().not_crossed_out(),
+    Span::from("git:(").blue().bg(Color::Reset).underline_color(Color::Reset).bold().not_dim().not_italic().not_underlined().not_slow_blink().not_rapid_blink().not_reversed().not_hidden().not_crossed_out(),
+    Span::from("main").red().bg(Color::Reset).underline_color(Color::Reset).not_bold().not_dim().not_italic().not_underlined().not_slow_blink().not_rapid_blink().not_reversed().not_hidden().not_crossed_out(),
+    Span::from(")").blue().bg(Color::Reset).underline_color(Color::Reset).bold().not_dim().not_italic().not_underlined().not_slow_blink().not_rapid_blink().not_reversed().not_hidden().not_crossed_out(),
+    Span::from(" 🐣 ").fg(Color::Reset).bg(Color::Reset).underline_color(Color::Reset).not_bold().not_dim().not_italic().not_underlined().not_slow_blink().not_rapid_blink().not_reversed().not_hidden().not_crossed_out(),
+    Span::from("-12%").fg(Color::Rgb(160, 125, 55)).bg(Color::Reset).underline_color(Color::Reset).not_bold().not_dim().not_italic().not_underlined().not_slow_blink().not_rapid_blink().not_reversed().not_hidden().not_crossed_out(),
+    Span::from(" (6d)").fg(Color::Reset).bg(Color::Reset).underline_color(Color::Reset).not_bold().not_dim().not_italic().not_underlined().not_slow_blink().not_rapid_blink().not_reversed().not_hidden().not_crossed_out(),
+])
