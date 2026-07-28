@@ -202,7 +202,9 @@ def discover_tools() -> dict[str, str]:
         path = shutil.which(name)
         if not path:
             raise UpdateError(f"required command is not installed: {name}")
-        tools[name] = str(Path(path).resolve())
+        # Preserve command shims such as ~/.cargo/bin/cargo -> rustup. Executing
+        # the resolved target changes argv[0] and bypasses rustup's proxy mode.
+        tools[name] = str(Path(path).absolute())
     return tools
 
 

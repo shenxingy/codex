@@ -151,3 +151,30 @@ def test_default_layout_respects_test_overrides(
 
     assert layout.state_root == (tmp_path / "state").resolve()
     assert layout.install_root == (tmp_path / "install").resolve()
+
+
+def test_discover_tools_preserves_command_shims(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    rustup = tmp_path / "rustup"
+    rustup.touch()
+    cargo = tmp_path / "cargo"
+    cargo.symlink_to(rustup)
+    paths = {
+        "cargo": cargo,
+        "git": tmp_path / "git",
+        "just": tmp_path / "just",
+    }
+    paths["git"].touch()
+    paths["just"].touch()
+    monkeypatch.setattr(
+        updater.shutil,
+        "which",
+        lambda name: str(paths[name]),
+    )
+
+    tools = updater.discover_tools()
+
+    assert tools["cargo"] == str(cargo.absolute())
+    assert tools["cargo"] != str(rustup.resolve())
