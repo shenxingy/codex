@@ -88,6 +88,49 @@ def test_usage_timer_runs_after_user_manager_startup() -> None:
 
     assert "OnStartupSec=30s" in timer
     assert "OnUnitActiveSec=2m" in timer
+    assert "Unit=codex-statusline-usage.service" in timer
+
+
+def test_prepare_worktree_resolves_managed_patch_refs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    layout = updater.Layout(tmp_path / "state", tmp_path / "install")
+    repo = tmp_path / "repo"
+    git_calls: list[tuple[str, ...]] = []
+
+    def fake_git_text(_repo: Path, *args: str, timeout: int = 120) -> str:
+        del timeout
+        git_calls.append(args)
+        if args == ("rev-parse", updater.BASE_REF):
+            return "base"
+        if args == ("rev-parse", updater.PATCH_REF):
+            return "tip"
+        if args == ("rev-parse", "HEAD"):
+            return "build"
+        raise AssertionError(args)
+
+    def fake_command_output(
+        args: list[str],
+        **_kwargs: object,
+    ) -> bytes:
+        if "diff" in args:
+            return b"patch"
+        return b""
+
+    monkeypatch.setattr(updater, "git_text", fake_git_text)
+    monkeypatch.setattr(updater, "command_output", fake_command_output)
+
+    _worktree, build_commit = updater.prepare_release_worktree(
+        layout,
+        repo,
+        "rust-v0.145.0",
+        "/usr/bin/git",
+    )
+
+    assert build_commit == "build"
+    assert ("rev-parse", updater.BASE_REF) in git_calls
+    assert ("rev-parse", updater.PATCH_REF) in git_calls
 
 
 def test_update_service_preserves_installer_path() -> None:

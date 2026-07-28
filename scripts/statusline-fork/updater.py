@@ -79,7 +79,7 @@ def usage_service_text(refresh_path: Path) -> str:
 Description=Refresh cached Codex usage for the custom status line
 After=network-online.target
 Wants=network-online.target
-ConditionPathIsExecutable={refresh_path}
+ConditionFileIsExecutable={refresh_path}
 
 [Service]
 Type=oneshot
@@ -95,7 +95,7 @@ Description=Refresh custom Codex usage every two minutes
 OnStartupSec=30s
 OnUnitActiveSec=2m
 Persistent=true
-Unit=codex-statusline-usage-refresh.service
+Unit=codex-statusline-usage.service
 
 [Install]
 WantedBy=timers.target
@@ -201,8 +201,8 @@ def prepare_release_worktree(
     tag: str,
     git_path: str,
 ) -> tuple[Path, str]:
-    base_commit = git_text(repo, BASE_REF)
-    patch_tip = git_text(repo, PATCH_REF)
+    base_commit = git_text(repo, "rev-parse", BASE_REF)
+    patch_tip = git_text(repo, "rev-parse", PATCH_REF)
     patch = command_output(
         [
             git_path,
