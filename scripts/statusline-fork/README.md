@@ -37,7 +37,7 @@ The installer creates:
 - versioned binaries and the updater under
   `~/.local/lib/codex-statusline/`;
 - `codex-statusline-update.timer`, which checks every six hours; and
-- `codex-statusline-usage-refresh.timer`, which refreshes the footer usage
+- `codex-statusline-usage.timer`, which refreshes the footer usage
   cache every two minutes when `refresh-usage` is installed.
 
 ## Operate

@@ -77,9 +77,17 @@ def test_deploy_binary_backs_up_legacy_and_switches_symlink(
 def test_timer_is_persistent_and_does_not_build_on_session_start() -> None:
     timer = updater.update_timer_text()
 
+    assert "OnStartupSec=10m" in timer
     assert "OnUnitActiveSec=6h" in timer
     assert "Persistent=true" in timer
     assert "SessionStart" not in timer
+
+
+def test_usage_timer_runs_after_user_manager_startup() -> None:
+    timer = updater.usage_timer_text()
+
+    assert "OnStartupSec=30s" in timer
+    assert "OnUnitActiveSec=2m" in timer
 
 
 def test_update_service_preserves_installer_path() -> None:

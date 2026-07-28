@@ -39,8 +39,8 @@ from updater_lib import write_json_atomic
 
 UPDATE_SERVICE = "codex-statusline-update.service"
 UPDATE_TIMER = "codex-statusline-update.timer"
-USAGE_SERVICE = "codex-statusline-usage-refresh.service"
-USAGE_TIMER = "codex-statusline-usage-refresh.timer"
+USAGE_SERVICE = "codex-statusline-usage.service"
+USAGE_TIMER = "codex-statusline-usage.timer"
 
 
 def update_service_text(updater_path: Path, environment_path: str) -> str:
@@ -63,7 +63,7 @@ def update_timer_text() -> str:
 Description=Check for a new Codex release every six hours
 
 [Timer]
-OnBootSec=10m
+OnStartupSec=10m
 OnUnitActiveSec=6h
 RandomizedDelaySec=15m
 Persistent=true
@@ -92,7 +92,7 @@ def usage_timer_text() -> str:
 Description=Refresh custom Codex usage every two minutes
 
 [Timer]
-OnBootSec=30s
+OnStartupSec=30s
 OnUnitActiveSec=2m
 Persistent=true
 Unit=codex-statusline-usage-refresh.service
