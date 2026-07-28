@@ -219,26 +219,38 @@ def ensure_clean_source(source_repo: Path) -> None:
 
 def clone_patch_source(source_repo: Path, managed_repo: Path, branch: str) -> None:
     if managed_repo.exists():
-        raise UpdateError(
-            f"managed source already exists: {managed_repo}; "
-            "remove it explicitly before reinstalling"
+        if not (managed_repo / ".git").exists():
+            raise UpdateError(f"managed source is not a git repository: {managed_repo}")
+        command_output(
+            [
+                "git",
+                "-C",
+                str(managed_repo),
+                "fetch",
+                "--force",
+                "--no-tags",
+                str(source_repo),
+                f"refs/heads/{branch}:refs/statusline-fork/install-source",
+            ],
+            timeout=600,
         )
-    managed_repo.parent.mkdir(parents=True, exist_ok=True)
-    command_output(
-        [
-            "git",
-            "clone",
-            "--no-hardlinks",
-            "--branch",
-            branch,
-            "--single-branch",
-            str(source_repo),
-            str(managed_repo),
-        ],
-        timeout=600,
-    )
-    git_output(managed_repo, "remote", "remove", "origin")
-    git_output(managed_repo, "remote", "add", "upstream", UPSTREAM_URL)
+    else:
+        managed_repo.parent.mkdir(parents=True, exist_ok=True)
+        command_output(
+            [
+                "git",
+                "clone",
+                "--no-hardlinks",
+                "--branch",
+                branch,
+                "--single-branch",
+                str(source_repo),
+                str(managed_repo),
+            ],
+            timeout=600,
+        )
+        git_output(managed_repo, "remote", "remove", "origin")
+        git_output(managed_repo, "remote", "add", "upstream", UPSTREAM_URL)
 
 
 def unit_quote(value: str) -> str:

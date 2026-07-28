@@ -63,7 +63,7 @@ def update_timer_text() -> str:
 Description=Check for a new Codex release every six hours
 
 [Timer]
-OnStartupSec=10m
+OnActiveSec=10m
 OnUnitActiveSec=6h
 RandomizedDelaySec=15m
 Persistent=true
@@ -92,7 +92,7 @@ def usage_timer_text() -> str:
 Description=Refresh custom Codex usage every two minutes
 
 [Timer]
-OnStartupSec=30s
+OnActiveSec=30s
 OnUnitActiveSec=2m
 Persistent=true
 Unit=codex-statusline-usage.service
