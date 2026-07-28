@@ -119,9 +119,11 @@ def install_systemd_units(layout: Layout, environment_path: str) -> None:
         temporary.write_text(contents, encoding="utf-8")
         os.replace(temporary, path)
     command_output(["systemctl", "--user", "daemon-reload"])
-    command_output(["systemctl", "--user", "enable", "--now", UPDATE_TIMER])
+    command_output(["systemctl", "--user", "enable", UPDATE_TIMER])
+    command_output(["systemctl", "--user", "restart", UPDATE_TIMER])
     if USAGE_TIMER in units:
-        command_output(["systemctl", "--user", "enable", "--now", USAGE_TIMER])
+        command_output(["systemctl", "--user", "enable", USAGE_TIMER])
+        command_output(["systemctl", "--user", "restart", USAGE_TIMER])
 
 
 def install(args: argparse.Namespace, layout: Layout) -> None:
