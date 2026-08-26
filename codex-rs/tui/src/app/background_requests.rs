@@ -1296,9 +1296,8 @@ pub(super) async fn run_status_line_command(
         }
         let line = String::from_utf8_lossy(&output.stdout)
             .lines()
-            .next()
             .map(|line| line.trim_end().to_string())
-            .filter(|line| !line.is_empty());
+            .find(|line| !line.is_empty());
         Ok(line)
     };
 
@@ -1364,6 +1363,20 @@ mod tests {
             "sh".to_string(),
             "-c".to_string(),
             "printf 'first\\nsecond\\n'".to_string(),
+        ];
+        assert_eq!(
+            run_status_line_command(&cmd, "").await,
+            Ok(Some("first".to_string()))
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn status_line_command_returns_first_non_empty_stdout_line() {
+        let cmd = vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            "printf '\n\nfirst\nsecond\n'".to_string(),
         ];
         assert_eq!(
             run_status_line_command(&cmd, "").await,

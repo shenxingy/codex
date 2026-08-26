@@ -1,5 +1,6 @@
 //! Theme-derived styling for the configurable footer statusline.
 
+use codex_ansi_escape::ansi_escape_line;
 use ratatui::prelude::Stylize;
 use ratatui::style::Color;
 use ratatui::style::Style;
@@ -105,6 +106,20 @@ where
         if !spans.is_empty() {
             spans.push(STATUS_LINE_SEPARATOR.dim());
         }
+        if item == StatusLineItem::Custom && text.contains('\x1b') {
+            let custom_line = ansi_escape_line(&text);
+            if use_theme_colors {
+                spans.extend(custom_line.spans);
+            } else {
+                spans.extend(
+                    custom_line
+                        .spans
+                        .into_iter()
+                        .map(|span| Span::styled(span.content, Style::default().dim())),
+                );
+            }
+            continue;
+        }
         let style = if use_theme_colors {
             let accent = StatusLineAccent::for_item(item);
             soften_status_line_style(
@@ -180,6 +195,7 @@ fn soften_rgb_channel(channel: u8, luma: u16) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use insta::assert_debug_snapshot;
     use pretty_assertions::assert_eq;
     use ratatui::style::Modifier;
 
@@ -266,6 +282,46 @@ mod tests {
         assert!(line.spans[1].style.add_modifier.contains(Modifier::DIM));
         assert_eq!(line.spans[2].style.fg, None);
         assert!(line.spans[2].style.add_modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    #[allow(clippy::disallowed_methods)]
+    fn custom_status_line_preserves_ansi_styles() {
+        let custom = concat!(
+            "\x1b[36mClade\x1b[0m ",
+            "\x1b[1;34mgit:(\x1b[0;31mmain\x1b[1;34m)\x1b[0m ",
+            "\u{1f423} \x1b[38;2;160;125;55m-12%\x1b[0m (6d)"
+        );
+        let line = status_line_from_segments_with_resolver(
+            [(StatusLineItem::Custom, custom.to_string())],
+            /*use_theme_colors*/ true,
+            |_| None,
+        )
+        .expect("status line");
+
+        assert_eq!(line_text(&line), "Clade git:(main) \u{1f423} -12% (6d)");
+        assert_debug_snapshot!("custom_status_line_ansi", line);
+    }
+
+    #[test]
+    fn custom_status_line_strips_ansi_styles_when_colors_are_disabled() {
+        let line = status_line_from_segments_with_resolver(
+            [(
+                StatusLineItem::Custom,
+                "\x1b[36mClade\x1b[0m \x1b[31mmain\x1b[0m".to_string(),
+            )],
+            /*use_theme_colors*/ false,
+            |_| None,
+        )
+        .expect("status line");
+
+        assert_eq!(line_text(&line), "Clade main");
+        assert!(line.spans.iter().all(|span| span.style.fg.is_none()));
+        assert!(
+            line.spans
+                .iter()
+                .all(|span| span.style.add_modifier.contains(Modifier::DIM))
+        );
     }
 
     #[test]
