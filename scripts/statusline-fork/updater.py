@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from updater_lib import BASE_REF
+from updater_lib import CODE_MODE_HOST_BINARY
 from updater_lib import PATCH_REF
 from updater_lib import UPSTREAM_URL
 from updater_lib import Layout
@@ -26,12 +27,15 @@ from updater_lib import command_output
 from updater_lib import default_layout
 from updater_lib import discover_tools
 from updater_lib import ensure_clean_source
+from updater_lib import fetch_rusty_v8_artifacts
+from updater_lib import host_target
 from updater_lib import git_output
 from updater_lib import git_text
 from updater_lib import install_file_atomic
 from updater_lib import latest_release_tag
 from updater_lib import read_json
 from updater_lib import release_version
+from updater_lib import resolved_v8_crate_version
 from updater_lib import run_logged
 from updater_lib import unit_quote
 from updater_lib import write_json_atomic
@@ -178,12 +182,17 @@ def remote_latest_tag(repo: Path, git_path: str) -> str:
     return latest_release_tag(output)
 
 
-def build_environment(layout: Layout, config: dict[str, Any]) -> dict[str, str]:
+def build_environment(
+    layout: Layout,
+    config: dict[str, Any],
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]:
     environment = os.environ.copy()
     environment["PATH"] = str(
         config.get("environmentPath") or environment.get("PATH", "")
     )
     environment["CARGO_TARGET_DIR"] = str(layout.cargo_target)
+    environment.update(extra or {})
     return environment
 
 
@@ -272,7 +281,13 @@ def build_and_test(
     layout: Layout,
     worktree: Path,
     config: dict[str, Any],
-) -> Path:
+) -> dict[str, Path]:
+    """Test the patch, then build `codex` AND its code-mode host.
+
+    Returns the built binaries by name. Both are required: a release with only
+    `codex` starts, but every session warns that Code Mode is unavailable
+    (observed on 0.153.4, 2026-09-04).
+    """
     tools = config.get("tools")
     if not isinstance(tools, dict):
         raise UpdateError("updater config is missing tool paths")
@@ -294,24 +309,37 @@ def build_and_test(
         cwd=codex_rs,
         env=environment,
     )
+    v8_artifacts = fetch_rusty_v8_artifacts(
+        layout.rusty_v8_cache,
+        resolved_v8_crate_version(worktree),
+        host_target(cargo_path),
+    )
     run_logged(
         [
             cargo_path,
             "build",
             "-p",
             "codex-cli",
+            "-p",
+            "codex-code-mode-host",
             "--bin",
             "codex",
+            "--bin",
+            CODE_MODE_HOST_BINARY,
             "--profile",
             "dev-small",
         ],
         cwd=codex_rs,
-        env=environment,
+        env=build_environment(layout, config, v8_artifacts.environment()),
     )
-    binary = layout.cargo_target / "dev-small" / "codex"
-    if not binary.is_file():
-        raise UpdateError(f"build succeeded without producing {binary}")
-    return binary
+    binaries = {
+        "codex": layout.cargo_target / "dev-small" / "codex",
+        CODE_MODE_HOST_BINARY: layout.cargo_target / "dev-small" / CODE_MODE_HOST_BINARY,
+    }
+    for name, path in binaries.items():
+        if not path.is_file() or path.stat().st_size == 0:
+            raise UpdateError(f"build succeeded without producing {name} at {path}")
+    return binaries
 
 
 def backup_legacy_binary(layout: Layout) -> str | None:
@@ -326,19 +354,35 @@ def backup_legacy_binary(layout: Layout) -> str | None:
     return str((backup_dir / "codex").relative_to(layout.install_root))
 
 
+def _install_companion(release_dir: Path, name: str, source: Path) -> None:
+    temporary = release_dir / f".{name}.{uuid.uuid4().hex}.tmp"
+    shutil.copy2(source, temporary)
+    temporary.chmod(0o755)
+    os.replace(temporary, release_dir / name)
+
+
 def deploy_binary(
     layout: Layout,
     binary: Path,
     *,
     tag: str,
     build_commit: str,
+    companions: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
+    """Place `codex` (and any companion executables) in a versioned release
+    directory and switch the active symlink to it.
+
+    A release directory that already exists is kept, but a companion it lacks
+    is added: that is how an install that predates the code-mode host is
+    repaired without rebuilding a new release name.
+    """
     version = ".".join(str(part) for part in release_version(tag))
     release_name = f"{version}-{build_commit[:12]}"
     releases_dir = layout.install_root / "releases"
     release_dir = releases_dir / release_name
     releases_dir.mkdir(parents=True, exist_ok=True)
     legacy_backup = backup_legacy_binary(layout)
+    companions = dict(companions or {})
 
     if not release_dir.exists():
         temporary_dir = Path(
@@ -347,10 +391,17 @@ def deploy_binary(
         try:
             shutil.copy2(binary, temporary_dir / "codex")
             (temporary_dir / "codex").chmod(0o755)
+            for name, source in companions.items():
+                shutil.copy2(source, temporary_dir / name)
+                (temporary_dir / name).chmod(0o755)
             os.replace(temporary_dir, release_dir)
         finally:
             if temporary_dir.exists():
                 shutil.rmtree(temporary_dir)
+    else:
+        for name, source in companions.items():
+            if not (release_dir / name).is_file():
+                _install_companion(release_dir, name, source)
 
     active = layout.active_binary
     active.parent.mkdir(parents=True, exist_ok=True)
@@ -372,9 +423,15 @@ def deploy_binary(
         "activeTarget": relative_target,
         "previousTarget": previous_target,
         "deployedAt": int(time.time()),
+        "companions": sorted(companions),
     }
     write_json_atomic(layout.manifest_path, manifest)
     return manifest
+
+
+def release_is_complete(layout: Layout) -> bool:
+    """The active release has `codex` and the code-mode host beside it."""
+    return layout.active_binary.is_file() and layout.active_code_mode_host().is_file()
 
 
 def validate_built_version(binary: Path, tag: str) -> None:
@@ -403,12 +460,14 @@ def update(layout: Layout) -> None:
         manifest = (
             read_json(layout.manifest_path) if layout.manifest_path.is_file() else {}
         )
-        active_is_valid = layout.active_binary.is_file()
-        if manifest.get("tag") == tag and active_is_valid:
+        if manifest.get("tag") == tag and release_is_complete(layout):
             print(f"Codex status-line fork is current: {tag}")
             return
 
-        print(f"Updating Codex status-line fork to {tag}", flush=True)
+        if manifest.get("tag") == tag:
+            print(f"Repairing Codex {tag}: {CODE_MODE_HOST_BINARY} is missing", flush=True)
+        else:
+            print(f"Updating Codex status-line fork to {tag}", flush=True)
         command_output(
             [
                 git_path,
@@ -425,13 +484,14 @@ def update(layout: Layout) -> None:
             layout, layout.source_repo, tag, git_path
         )
         try:
-            binary = build_and_test(layout, worktree, config)
-            validate_built_version(binary, tag)
+            binaries = build_and_test(layout, worktree, config)
+            validate_built_version(binaries["codex"], tag)
             deployed = deploy_binary(
                 layout,
-                binary,
+                binaries["codex"],
                 tag=tag,
                 build_commit=build_commit,
+                companions={CODE_MODE_HOST_BINARY: binaries[CODE_MODE_HOST_BINARY]},
             )
             tag_commit = git_text(layout.source_repo, "rev-parse", f"{tag}^{{commit}}")
             git_output(layout.source_repo, "update-ref", BASE_REF, tag_commit)
@@ -451,6 +511,8 @@ def status(layout: Layout, online: bool) -> None:
     manifest = read_json(layout.manifest_path) if layout.manifest_path.is_file() else {}
     print(f"Active binary: {layout.active_binary}")
     print(f"Resolved to:   {layout.active_binary.resolve(strict=False)}")
+    host = layout.active_code_mode_host()
+    print(f"Code-mode host: {host} ({'present' if host.is_file() else 'MISSING'})")
     print(f"Installed:     {manifest.get('tag', 'not managed yet')}")
     print(f"Patch base:    {config.get('baseTag', 'unknown')}")
     if online:

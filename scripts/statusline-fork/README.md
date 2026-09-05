@@ -12,9 +12,18 @@ For each new stable release the updater:
 1. fetches the release tag;
 2. reapplies the tracked `codex-rs` patch in a temporary worktree;
 3. runs the focused status-line tests;
-4. builds Codex and verifies that `codex --version` exactly matches the tag;
-5. copies the binary into a versioned release directory; and
-6. atomically switches the active symlink.
+4. fetches and checksum-verifies the Codex-built rusty_v8 archive for this
+   host (`rusty-v8-v<version>` on openai/codex releases -- the
+   `ptrcomp_sandbox` variant Codex enables is not published by
+   denoland/rusty_v8), cached under `~/.local/share/codex-statusline/rusty_v8/`;
+5. builds `codex` **and** `codex-code-mode-host`, and verifies that
+   `codex --version` exactly matches the tag;
+6. copies both into a versioned release directory (the host must sit beside
+   `codex`, or every session warns "Code Mode is unavailable"); and
+7. atomically switches the active symlink.
+
+A release that is on the latest tag but lacks the host beside `codex` counts
+as stale and is repaired in place on the next run.
 
 Any fetch, patch, test, build, or version-validation failure leaves the active
 binary and patch baseline unchanged. The first managed deployment also keeps a
@@ -43,7 +52,7 @@ The installer creates:
 ## Operate
 
 ```sh
-# Check installed and upstream versions
+# Check installed and upstream versions (and that the code-mode host is present)
 ~/.local/lib/codex-statusline/updater/updater.py status --online
 
 # Run an update immediately
