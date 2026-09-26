@@ -823,6 +823,17 @@ pub(crate) struct ChatWidget {
     status_line_workspace_messages_disabled: bool,
     // Cached backend-estimated cost and bounded refresh state for the current thread.
     thread_usage: thread_usage::ThreadUsageState,
+    // Cached first stdout line from the configured `status_line_command`.
+    status_line_command_output: Option<String>,
+    // Request ID for the async status_line_command run currently in flight.
+    status_line_command_pending_request_id: Option<u64>,
+    // Request ID to assign to the next status_line_command run.
+    next_status_line_command_request_id: u64,
+    // Last time a status_line_command run was requested.
+    status_line_command_last_requested_at: Option<Instant>,
+    // Last stdin snapshot sent to status_line_command; a change (e.g. branch or
+    // cwd switch) triggers an immediate re-run instead of waiting for the timer.
+    status_line_command_last_snapshot: Option<String>,
     // Current thread-goal status shown in the status line when plan mode is inactive.
     current_goal_status_indicator: Option<GoalStatusIndicator>,
     current_goal_status: Option<GoalStatusState>,
@@ -1232,6 +1243,7 @@ impl ChatWidget {
         }
         self.refresh_status_line_if_workspace_headline_due();
         self.refresh_thread_usage_if_settlement_due();
+        self.refresh_status_line_if_command_due();
     }
 
     fn flush_active_cell(&mut self) {

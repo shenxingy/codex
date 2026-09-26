@@ -155,6 +155,10 @@ pub(crate) enum StatusLineItem {
 
     /// Latest checklist task progress from `update_plan` (if available).
     TaskProgress,
+
+    /// Output of the configured `status_line_command` (its first stdout line).
+    /// Command-backed status-line extension point (openai/codex#17827).
+    Custom,
 }
 
 impl StatusLineItem {
@@ -215,6 +219,7 @@ impl StatusLineItem {
             StatusLineItem::TaskProgress => {
                 "Latest task progress from update_plan (omitted until available)"
             }
+            StatusLineItem::Custom => "Output of the configured status_line_command",
         }
     }
 
@@ -250,6 +255,7 @@ impl StatusLineItem {
             StatusLineItem::ThreadTitle => StatusSurfacePreviewItem::ThreadTitle,
             StatusLineItem::WorkspaceHeadline => StatusSurfacePreviewItem::WorkspaceHeadline,
             StatusLineItem::TaskProgress => StatusSurfacePreviewItem::TaskProgress,
+            StatusLineItem::Custom => StatusSurfacePreviewItem::WorkspaceHeadline,
         }
     }
 }
