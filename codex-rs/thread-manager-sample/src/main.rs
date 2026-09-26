@@ -314,6 +314,7 @@ async fn new_config(
         tui_status_line: None,
         tui_status_line_provider: None,
         tui_status_line_use_colors: true,
+        tui_status_line_command: None,
         tui_terminal_title: None,
         tui_theme: None,
         tui_raw_output_mode: false,
