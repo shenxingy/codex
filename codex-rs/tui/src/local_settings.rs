@@ -74,6 +74,7 @@ impl LocalSettings {
                 fullscreen_transcript: config.tui_fullscreen_transcript,
                 alternate_screen: config.tui_alternate_screen,
                 status_line: config.tui_status_line.clone(),
+                status_line_command: config.tui_status_line_command.clone(),
                 status_line_use_colors: config.tui_status_line_use_colors,
                 terminal_title: config.tui_terminal_title.clone(),
                 theme: config.tui_theme.clone(),
