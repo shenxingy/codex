@@ -893,6 +893,10 @@ pub struct Config {
     /// Local choice of built-in status items or an MCP provider.
     pub tui_status_line_provider: Option<Box<StatusLineSelection>>,
 
+    /// External command whose stdout renders the `custom` status-line item.
+    /// See the `status_line_command` field on the `[tui]` config table.
+    pub tui_status_line_command: Option<Vec<String>>,
+
     /// Whether to color status line items with colors from the active syntax theme.
     pub tui_status_line_use_colors: bool,
 
@@ -5031,6 +5035,10 @@ impl Config {
                 .unwrap_or_default(),
             tui_status_line: cfg.tui.as_ref().and_then(|t| t.status_line.clone()),
             tui_status_line_provider: cfg.tui.as_ref().and_then(|t| t.status_line_provider.clone()),
+            tui_status_line_command: cfg
+                .tui
+                .as_ref()
+                .and_then(|t| t.status_line_command.clone()),
             tui_status_line_use_colors: cfg
                 .tui
                 .as_ref()

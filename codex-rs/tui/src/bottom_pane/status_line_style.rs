@@ -1,5 +1,6 @@
 //! Theme-derived styling for the configurable footer statusline.
 
+use codex_ansi_escape::ansi_escape_line;
 use ratatui::style::Color;
 use ratatui::style::Style;
 use ratatui::style::Styled;
@@ -82,6 +83,7 @@ impl StatusLineAccent {
             | StatusLineItem::ThreadTitle
             | StatusLineItem::WorkspaceHeadline => Self::Thread,
             StatusLineItem::TaskProgress => Self::Progress,
+            StatusLineItem::Custom => Self::Usage,
         }
     }
 
@@ -140,11 +142,26 @@ where
 {
     let mut line = HyperlinkLine::default();
     for (item, mut text) in segments {
+        // `status_line_command` output keeps its own ANSI styling. Parse it before control
+        // characters are stripped below (ESC is one), then strip what the parser leaves.
+        let custom_ansi_spans = (item == StatusLineItem::Custom && text.contains('\x1b'))
+            .then(|| custom_status_line_spans(&text, use_theme_colors));
         // Paragraph skips control characters, so they must not enter this single row's link offsets.
         text.retain(|ch| !ch.is_control());
+        if let Some(spans) = &custom_ansi_spans
+            && spans.is_empty()
+        {
+            continue;
+        }
         if !line.line.spans.is_empty() {
             line.line
                 .push_span(STATUS_LINE_SEPARATOR.set_style(secondary_text_style()));
+        }
+        if let Some(spans) = custom_ansi_spans {
+            for span in spans {
+                line.line.push_span(span);
+            }
+            continue;
         }
         let style = if use_theme_colors
             && matches!(
@@ -183,6 +200,31 @@ where
     }
 
     (!line.line.spans.is_empty()).then_some(line)
+}
+
+/// Converts ANSI-styled `status_line_command` output into footer spans.
+///
+/// With theme colors on, the command's own SGR styles are kept; with them off, every span uses
+/// the secondary footer style. Control characters left after ANSI parsing are removed so they
+/// cannot shift the footer's link offsets, and spans left empty are dropped.
+fn custom_status_line_spans(text: &str, use_theme_colors: bool) -> Vec<Span<'static>> {
+    ansi_escape_line(text)
+        .spans
+        .into_iter()
+        .filter_map(|span| {
+            let mut content = span.content.into_owned();
+            content.retain(|ch| !ch.is_control());
+            if content.is_empty() {
+                return None;
+            }
+            let style = if use_theme_colors {
+                span.style
+            } else {
+                secondary_text_style()
+            };
+            Some(Span::styled(content, style))
+        })
+        .collect()
 }
 
 fn soften_status_line_style(mut style: Style) -> Style {
@@ -241,6 +283,7 @@ fn soften_rgb_channel(channel: u8, luma: u16) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use insta::assert_debug_snapshot;
     use pretty_assertions::assert_eq;
     use ratatui::style::Modifier;
     use ratatui::text::Line;
@@ -370,6 +413,51 @@ mod tests {
         assert_eq!(line.spans[0].style, secondary_text_style());
         assert_eq!(line.spans[1].style, secondary_text_style());
         assert_eq!(line.spans[2].style, secondary_text_style());
+    }
+
+    #[test]
+    #[allow(clippy::disallowed_methods)]
+    fn custom_status_line_preserves_ansi_styles() {
+        let custom = concat!(
+            "\x1b[36mClade\x1b[0m ",
+            "\x1b[1;34mgit:(\x1b[0;31mmain\x1b[1;34m)\x1b[0m ",
+            "\u{1f423} \x1b[38;2;160;125;55m-12%\x1b[0m (6d)"
+        );
+        let line = status_line_from_segments_with_resolver(
+            [(StatusLineItem::Custom, custom.to_string())],
+            /*use_theme_colors*/ true,
+            /*thread_id*/ None,
+            /*pull_request_url*/ None,
+            |_| None,
+        )
+        .expect("status line")
+        .line;
+
+        assert_eq!(line_text(&line), "Clade git:(main) \u{1f423} -12% (6d)");
+        assert_debug_snapshot!("custom_status_line_ansi", line);
+    }
+
+    #[test]
+    fn custom_status_line_strips_ansi_styles_when_colors_are_disabled() {
+        let line = status_line_from_segments_with_resolver(
+            [(
+                StatusLineItem::Custom,
+                "\x1b[36mClade\x1b[0m \x1b[31mmain\x1b[0m".to_string(),
+            )],
+            /*use_theme_colors*/ false,
+            /*thread_id*/ None,
+            /*pull_request_url*/ None,
+            |_| None,
+        )
+        .expect("status line")
+        .line;
+
+        assert_eq!(line_text(&line), "Clade main");
+        assert!(
+            line.spans
+                .iter()
+                .all(|span| span.style == secondary_text_style())
+        );
     }
 
     #[test]
