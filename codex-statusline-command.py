@@ -103,10 +103,12 @@ def main() -> int:
         display_delta = round(delta)
         sign = "+" if display_delta >= 0 else ""
         theme = read_text(codex_home / ".clade-usage-theme") or "circles"
+        style = read_text(codex_home / ".clade-usage-style") or "minimal"
+        icon = f"{symbol(delta, theme)} " if style in {"icon", "detail"} else ""
         projected = float(primary.get("projected_percent") or 0.0)
         resets_in = str(primary.get("resets_in") or "?")
         output += (
-            f" {symbol(delta, theme)} {color(projected, delta)}{sign}{display_delta}%"
+            f" {icon}{color(projected, delta)}{sign}{display_delta}%"
             f"{RESET} ({resets_in})"
         )
 
