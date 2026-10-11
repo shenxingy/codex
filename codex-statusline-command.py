@@ -11,6 +11,9 @@ from pathlib import Path
 
 
 RESET = "\033[0m"
+PACE_HONEY = "\033[38;2;212;180;119m"  # #D4B477
+PACE_PEACH = "\033[38;2;210;160;135m"  # #D2A087
+OVERPACE_PROJECTED = 125.0
 THEMES = {
     "circles": ("○", "◑", "●", "◉"),
     "plain": ("--", "-", "+", "++"),
@@ -25,21 +28,11 @@ THEMES = {
 }
 
 
-def color(projected: float) -> str:
-    if projected > 100:
-        return "\033[38;2;85;160;85m"
-    projected = max(0.0, min(projected, 95.0))
-    if projected <= 50:
-        ratio = projected / 50.0
-        red = 160
-        green = int(75 + 50 * ratio)
-        blue = int(75 - 20 * ratio)
-    else:
-        ratio = (projected - 50.0) / 45.0
-        red = int(160 - 90 * ratio)
-        green = int(125 + 20 * ratio)
-        blue = int(55 + 15 * ratio)
-    return f"\033[38;2;{red};{green};{blue}m"
+def color(projected: float, delta: float) -> str:
+    """Match Clade's warm pace palette and severe-overpacing threshold."""
+    if delta >= 5 and projected > OVERPACE_PROJECTED:
+        return PACE_PEACH
+    return PACE_HONEY
 
 
 def symbol(delta: float, theme: str) -> str:
@@ -113,7 +106,7 @@ def main() -> int:
         projected = float(primary.get("projected_percent") or 0.0)
         resets_in = str(primary.get("resets_in") or "?")
         output += (
-            f" {symbol(delta, theme)} {color(projected)}{sign}{display_delta}%"
+            f" {symbol(delta, theme)} {color(projected, delta)}{sign}{display_delta}%"
             f"{RESET} ({resets_in})"
         )
 
