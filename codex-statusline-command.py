@@ -87,7 +87,7 @@ def main() -> int:
 
     output = f"\033[36m{directory}{RESET}"
     if branch:
-        output += f" \033[1;34mgit:({RESET}\033[31m{branch}\033[1;34m){RESET}"
+        output += f" \033[31m{branch}{RESET}"  # red branch, no git:(…) label, as in Claude Code
 
     codex_home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")).expanduser()
     try:
