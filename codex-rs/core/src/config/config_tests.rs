@@ -1520,6 +1520,41 @@ status_line_use_colors = false
     );
 }
 
+#[tokio::test]
+async fn runtime_config_carries_tui_status_line_command() {
+    let toml = r#"
+[tui]
+status_line = ["custom"]
+status_line_command = ["sh", "-c", "printf 'Clade main'"]
+"#;
+    let cfg_toml: ConfigToml = toml::from_str(toml).expect("deserialize status_line_command");
+    let cfg = Config::load_from_base_config_with_overrides(
+        cfg_toml,
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load config");
+
+    assert_eq!(
+        cfg.tui_status_line_command,
+        Some(vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            "printf 'Clade main'".to_string(),
+        ])
+    );
+
+    let unset = Config::load_from_base_config_with_overrides(
+        ConfigToml::default(),
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load config");
+    assert_eq!(unset.tui_status_line_command, None);
+}
+
 #[test]
 fn config_toml_deserializes_terminal_resize_reflow_config() {
     let toml = r#"
