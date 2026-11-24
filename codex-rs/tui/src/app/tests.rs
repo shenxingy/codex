@@ -70,6 +70,8 @@ mod permission_selection_tests;
 mod projectless_tests;
 #[path = "tests/quick_dials_tests.rs"]
 mod quick_dials_tests;
+#[path = "tests/status_line_command_tests.rs"]
+mod status_line_command_tests;
 #[path = "tests/unavailable_commands_tests.rs"]
 mod unavailable_commands;
 

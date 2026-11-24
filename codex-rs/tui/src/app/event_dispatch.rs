@@ -70,6 +70,10 @@ impl App {
                     | AppEvent::CreateCustomStatusline { .. }
                     | AppEvent::StatuslinePicker { .. }
                     | AppEvent::StatusLineSetupCancelled
+                    // `status_line_command` runs locally; dropping either half while offline
+                    // would leave its request pending and freeze the `custom` item.
+                    | AppEvent::RefreshStatusLineCommand { .. }
+                    | AppEvent::StatusLineCommandUpdated { .. }
                     | AppEvent::TerminalTitleSetup { .. }
                     | AppEvent::TerminalTitleSetupPreview { .. }
                     | AppEvent::TerminalTitleSetupCancelled

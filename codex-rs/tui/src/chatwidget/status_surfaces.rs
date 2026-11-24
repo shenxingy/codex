@@ -42,6 +42,11 @@ const TERMINAL_TITLE_ACTION_REQUIRED_INTERVAL: Duration = Duration::from_secs(1)
 /// `custom` status-line item.
 const STATUS_LINE_COMMAND_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 
+/// A `status_line_command` run whose result has not arrived after this long is treated as lost
+/// and may be re-requested. Runs are bounded by a much shorter timeout, so only a dropped
+/// request or result event can get here; without this the `custom` item would freeze.
+const STATUS_LINE_COMMAND_LOST_AFTER: Duration = Duration::from_secs(30);
+
 /// Prefix shown in the terminal title when the agent is blocked on user input.
 const TERMINAL_TITLE_ACTION_REQUIRED_PREFIX: &str = "[ ! ] Action Required";
 const TERMINAL_TITLE_ACTION_REQUIRED_PREFIX_HIDDEN: &str = "[ . ] Action Required";
@@ -761,7 +766,13 @@ impl ChatWidget {
     }
 
     fn request_status_line_command_if_due(&mut self, now: Instant) {
-        if self.status_line_command_pending_request_id.is_some() {
+        if self.status_line_command_pending_request_id.is_some()
+            && self
+                .status_line_command_last_requested_at
+                .is_some_and(|requested_at| {
+                    now.saturating_duration_since(requested_at) < STATUS_LINE_COMMAND_LOST_AFTER
+                })
+        {
             return;
         }
         let Some(command) = self.configured_status_line_command() else {

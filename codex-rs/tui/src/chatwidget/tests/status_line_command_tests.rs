@@ -5,6 +5,7 @@ use codex_config::types::BuiltinStatusLine;
 use codex_config::types::StatusLineProviderId;
 use codex_config::types::StatusLineSelection;
 use pretty_assertions::assert_eq;
+use std::time::Duration;
 
 fn command_requests(
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
@@ -145,4 +146,27 @@ async fn mcp_provider_takes_precedence_over_the_command() {
     )));
     chat.refresh_status_line();
     assert_eq!(command_requests(&mut rx).len(), 1);
+}
+
+#[tokio::test]
+async fn lost_command_request_is_retried() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    configure_custom(&mut chat, Some(&["true"]));
+    chat.refresh_status_line();
+    let [(lost, _, _)] = command_requests(&mut rx).try_into().unwrap();
+
+    chat.refresh_status_line_if_command_due();
+    assert!(
+        command_requests(&mut rx).is_empty(),
+        "still within the wait"
+    );
+
+    chat.status_line_command_last_requested_at =
+        Instant::now().checked_sub(Duration::from_secs(/*secs*/ 31));
+    chat.refresh_status_line_if_command_due();
+    let [(retry, _, _)] = command_requests(&mut rx).try_into().unwrap();
+    assert_ne!(retry, lost);
+    assert!(!chat.set_status_line_command_output(lost, Ok(Some("late".to_string()))));
+    assert!(chat.set_status_line_command_output(retry, Ok(Some("fresh".to_string()))));
+    assert_eq!(status_line_text(&chat), Some("fresh".to_string()));
 }
