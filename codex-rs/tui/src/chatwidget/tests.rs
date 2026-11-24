@@ -298,6 +298,8 @@ mod sparkle_submission_tests;
 mod startup_submission_tests;
 mod status_and_layout;
 mod status_command_tests;
+#[path = "tests/status_line_command_tests.rs"]
+mod status_line_command_tests;
 #[path = "tests/status_surface_command_tests.rs"]
 mod status_surface_command_tests;
 mod status_surface_previews;

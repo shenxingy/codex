@@ -767,6 +767,12 @@ impl ChatWidget {
         let Some(command) = self.configured_status_line_command() else {
             return;
         };
+        // A selected MCP status line provider replaces the built-in footer, `custom` included,
+        // so the command would run only to be discarded. It resumes whenever the footer falls
+        // back to the built-in items (feature off, provider set to default, or disconnected).
+        if self.selected_statusline_provider().is_some() {
+            return;
+        }
         if !self
             .status_line_items_with_invalids()
             .0
