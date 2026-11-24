@@ -749,9 +749,12 @@ impl ChatWidget {
     }
 
     /// Configured `status_line_command` argv, or `None` when unset or empty.
+    ///
+    /// Read from the same local settings as `status_line`, so both change together.
     pub(super) fn configured_status_line_command(&self) -> Option<Vec<String>> {
-        self.config
-            .tui_status_line_command
+        self.local_settings
+            .tui
+            .status_line_command
             .as_ref()
             .filter(|argv| !argv.is_empty())
             .cloned()
